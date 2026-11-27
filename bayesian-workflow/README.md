@@ -21,7 +21,16 @@ Symlink the skill into the `skills` directory of your Claude Code config home
 (`$CLAUDE_CONFIG_DIR`, or `~/.claude` if you have not set it):
 
 ```sh
+mkdir -p "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills"
 ln -s /path/to/skills/bayesian-workflow "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/bayesian-workflow"
+```
+
+For PyMC projects, also install the `pymc-modeling` skill, which this skill
+defers to for the modelling loop. It is published by PyMC Labs on Decision
+Hub:
+
+```sh
+dhub install pymc-labs/pymc-modeling --agent claude-code
 ```
 
 ## Triggers
