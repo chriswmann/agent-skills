@@ -45,6 +45,30 @@ cost no context otherwise.
 | `setup-audit` | user | Measure a profile's context load and sediment; change only what you pick, retiring rather than deleting. |
 | `writing-skills` | model | How to write skills and `CLAUDE.md` for agents. |
 
+## Cache countdown status line
+
+`statusline/cache.py` shows, under the prompt, how long until this chat's prompt cache goes cold:
+
+```
+cache 3:42 · 1h · 182k to rebuild         green
+cache 0:38 · send now to keep it          amber, last minute
+cache cold · next message writes 182k     red
+```
+
+A reply within the cache lifetime (5 minutes or 1 hour) reads the history from cache at a fraction
+of the price; after it, the whole history is written again. It uses the `prompt_cache` field Claude
+Code passes to status lines (2.1.251 and later) and falls back to the transcript on older versions.
+Run interactively, `install.sh` offers to add it to each chosen profile; where a profile already has
+a status line, it asks whether to wrap it (keep it and append the countdown), replace it or skip.
+`settings.json` is backed up first. Non-interactively, `--statusline` adds it only where no status
+line exists. To set it by hand:
+
+```json
+"statusLine": { "type": "command", "command": "python3 /path/to/agent-skills/statusline/cache.py", "refreshInterval": 1 }
+```
+
+Wrap an existing one with `cache.py --wrap '<your command>'`.
+
 ## Conventions
 
 - Specs and tickets live in `docs/specs/<slug>/` unless a project's `CLAUDE.md` says otherwise.

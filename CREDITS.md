@@ -43,8 +43,9 @@ That material is used under the MIT licence:
 
 ## Acknowledgement
 
-The idea of auditing a whole Claude setup came from the `detox` skill in Ben AI's "Claude 15 tips"
-kit. `setup-audit`'s text and code are independent of it.
+The ideas of auditing a whole Claude setup and of a prompt-cache countdown came from the `detox`
+skill and `cache-clock` mod in Ben AI's "Claude 15 tips" kit. `setup-audit` and
+`statusline/cache.py` are written independently of them.
 
 ## Geoffrey Litt
 

@@ -4,6 +4,11 @@
 #   ./install.sh                 offer to search $HOME for profiles, then choose which to use
 #   ./install.sh DIR [DIR ...]   install into each DIR's skills folder, no questions
 #   ./install.sh --all           install into every profile found, no questions
+#   --statusline                 with DIR or --all: also add the cache countdown status line to
+#                                each profile that has no status line yet (others are skipped)
+#
+# Run interactively, it also offers the cache countdown status line (statusline/cache.py) and,
+# for a profile that already has a status line, asks whether to wrap it, replace it or skip.
 #
 # A profile is a Claude config directory: ~/.claude, or any directory at the top of $HOME that
 # Claude Code uses through CLAUDE_CONFIG_DIR (for example ~/.claude-work). Skills go in
@@ -59,6 +64,33 @@ install_into() {
   done
 }
 
+# Add the cache status line to one profile. $2 is "ask" (interactive) or "auto".
+statusline_into() {
+  local profile="$1" mode="$2" settings state answer
+  case "$(basename "$profile")" in skills) return ;; esac  # a skills folder, not a profile
+  settings="$profile/settings.json"
+  state="$(python3 "$repo/statusline/configure.py" "$settings" check)" || return 0
+  case "$state" in
+    none) python3 "$repo/statusline/configure.py" "$settings" add >/dev/null &&
+      echo "   status line added to ${settings/#$HOME/\~}" ;;
+    ours) echo "   status line already set in ${settings/#$HOME/\~}" ;;
+    other:*)
+      if [ "$mode" = auto ]; then
+        echo "   status line skipped: ${settings/#$HOME/\~} already has one"
+        return
+      fi
+      echo "   ${settings/#$HOME/\~} already runs: ${state#other:}"
+      printf '   [w]rap it (keep it, add the countdown after), [r]eplace it, or [s]kip? [s] '
+      read -r answer || return 0
+      case "$answer" in
+        w | W) python3 "$repo/statusline/configure.py" "$settings" wrap >/dev/null && echo "   wrapped" ;;
+        r | R) python3 "$repo/statusline/configure.py" "$settings" replace >/dev/null && echo "   replaced" ;;
+        *) echo "   skipped" ;;
+      esac
+      ;;
+  esac
+}
+
 # Ask which of the found profiles to use. Sets the global array `chosen`.
 choose() {
   local i=1 answer n
@@ -93,6 +125,19 @@ profiles=()
 while IFS= read -r line; do profiles+=("$line"); done < <(find_profiles)
 chosen=()
 
+statusline=ask
+args=()
+for a in "$@"; do
+  case "$a" in
+    --statusline) statusline=auto ;;
+    *) args+=("$a") ;;
+  esac
+done
+if [ "${#args[@]}" -gt 0 ] || [ ! -t 0 ]; then
+  [ "$statusline" = auto ] || statusline=no  # non-interactive: only with --statusline
+fi
+set -- ${args[@]+"${args[@]}"}
+
 if [ "$#" -gt 0 ] && [ "$1" = "--all" ]; then
   [ "${#profiles[@]}" -gt 0 ] || { echo "No Claude profiles found in $HOME." >&2; exit 1; }
   chosen=("${profiles[@]}")
@@ -118,3 +163,16 @@ else
 fi
 
 for p in "${chosen[@]}"; do install_into "$p"; done
+
+if [ "$statusline" = ask ]; then
+  printf '\nAdd the cache countdown status line (statusline/cache.py) to these profiles? [y/N] '
+  read -r answer || answer=n
+  case "$answer" in y | Y | yes) ;; *) statusline=no ;; esac
+fi
+if [ "$statusline" != no ]; then
+  command -v python3 >/dev/null || { echo "python3 not found; status line not added." >&2; exit 1; }
+  for p in "${chosen[@]}"; do
+    echo "== ${p/#$HOME/\~}"
+    statusline_into "$p" "$statusline"
+  done
+fi
