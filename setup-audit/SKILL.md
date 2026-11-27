@@ -62,6 +62,12 @@ where they want something different.
 
 Carry out the accepted numbers in list order, honouring any note.
 
+**Shared skills.** The scan reports `"symlink": true` for a skill folder that links elsewhere, such
+as this repository after `install.sh`. Editing through the link changes the source, and with it
+every profile linked to it. Before trimming or changing such a skill, say which profiles share it
+and ask: change the shared source, or replace the link in this profile with a local copy and edit
+that. Retiring a linked skill moves only the link.
+
 - **Retire** means move, not delete: skill folders go to `<profile>/retired/YYYY-MM-DD/`, and a
   removed MCP server's configuration is copied there first.
 - **Trim** and other file edits are shown as a diff and written after the user agrees to that diff.

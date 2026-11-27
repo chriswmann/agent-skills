@@ -62,10 +62,8 @@ def from_prompt_cache(pc: dict) -> dict | None:
     }
 
 
-def from_transcript(path: str | None) -> dict | None:
-    """State worked out from the last main-thread reply in the transcript."""
-    if not path or not os.path.isfile(path):
-        return None
+def main_replies(path: str):
+    """Yield (timestamp, usage) for main-thread replies, newest first, from the transcript's tail."""
     with open(path, "rb") as fh:
         fh.seek(0, os.SEEK_END)
         fh.seek(max(0, fh.tell() - TAIL_BYTES))
@@ -75,26 +73,44 @@ def from_transcript(path: str | None) -> dict | None:
             continue
         try:
             event = json.loads(line)
-        except ValueError:
+            replied = datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00")).timestamp()
+        except (ValueError, KeyError, AttributeError):
             continue
-        if event.get("type") != "assistant" or event.get("isSidechain"):
-            continue
-        usage = (event.get("message") or {}).get("usage") or {}
+        if event.get("type") == "assistant" and not event.get("isSidechain"):
+            yield replied, (event.get("message") or {}).get("usage") or {}
+
+
+def from_transcript(path: str | None) -> dict | None:
+    """State worked out from the transcript.
+
+    Any reply that reads or writes the cache restarts its lifetime from that reply. The lifetime
+    itself (5m or 1h) shows only in replies that wrote to the cache, so it comes from the newest
+    such reply; a reply that only read keeps whatever lifetime the cache was written with. If no
+    write is in view, assume the shorter 5m and mark it, so the countdown errs on the early side.
+    """
+    if not path or not os.path.isfile(path):
+        return None
+    latest = None
+    ttl = None
+    for replied, usage in main_replies(path):
         created = usage.get("cache_creation") or {}
+        used = usage.get("cache_read_input_tokens") or usage.get("cache_creation_input_tokens")
+        if latest is None:
+            if not used:
+                return None  # the newest reply used no cache
+            cached = (usage.get("cache_read_input_tokens") or 0) + (usage.get("cache_creation_input_tokens") or 0)
+            latest = (replied, cached)
         if created.get("ephemeral_1h_input_tokens"):
             ttl = "1h"
-        elif created.get("ephemeral_5m_input_tokens") or usage.get("cache_read_input_tokens"):
+        elif created.get("ephemeral_5m_input_tokens"):
             ttl = "5m"
-        else:
-            return None  # this reply used no cache
-        try:
-            replied = datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00")).timestamp()
-        except (KeyError, ValueError):
-            return None
-        expires = replied + TTL_SECONDS[ttl]
-        cached = (usage.get("cache_read_input_tokens") or 0) + (usage.get("cache_creation_input_tokens") or 0)
-        return {"warm": expires > time.time(), "expires_at": expires, "ttl": ttl, "rebuild": cached}
-    return None
+        if ttl:
+            break
+    if latest is None:
+        return None
+    replied, cached = latest
+    expires = replied + TTL_SECONDS[ttl or "5m"]
+    return {"warm": expires > time.time(), "expires_at": expires, "ttl": ttl or "5m?", "rebuild": cached}
 
 
 def segment(state: dict | None, colour: bool) -> str:

@@ -21,7 +21,9 @@ It reads, and never writes, these places:
 
 Token counts are estimates: characters / 4.
 
-Usage counts come from transcripts: a Skill tool call names the skill, and a slash command typed
+Usage counts come from transcripts, dated by each event's own timestamp, so a resumed old session
+does not pull its old calls into the window. The file's modification time only skips files that
+cannot contain anything recent.  a Skill tool call names the skill, and a slash command typed
 by the user appears as <command-name>/name</command-name>. An MCP tool call is named
 mcp__<server>__<tool>. A skill with no use in the window is a candidate, not a verdict: use in
 other machines, Cowork or the desktop app is not visible here.
@@ -36,6 +38,7 @@ import re
 import sys
 import time
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
 
 HOME = Path.home()
@@ -153,6 +156,14 @@ def scan_settings(project: Path) -> list[dict]:
     return out
 
 
+def event_time(event: dict) -> float | None:
+    """Epoch seconds of a transcript event, from its ISO timestamp."""
+    try:
+        return datetime.fromisoformat(event["timestamp"].replace("Z", "+00:00")).timestamp()
+    except (KeyError, ValueError, AttributeError):
+        return None
+
+
 def scan_usage(days: int) -> dict:
     cutoff = time.time() - days * 86400
     skills: Counter[str] = Counter()
@@ -188,10 +199,15 @@ def scan_usage(days: int) -> dict:
                         if tool == "Skill":
                             names.append(str((block.get("input") or {}).get("skill", "")))
                         elif tool.startswith("mcp__"):
-                            mcp[tool.split("__")[1]] += 1
+                            when = event_time(event)
+                            if when is not None and when >= cutoff:
+                                mcp[tool.split("__")[1]] += 1
+                when = event_time(event)
+                if when is None or when < cutoff:
+                    continue  # a resumed old session keeps its old calls outside the window
                 for name in filter(None, names):
                     skills[name] += 1
-                    last_used[name] = max(last_used.get(name, 0), mtime)
+                    last_used[name] = max(last_used.get(name, 0), when)
     return {
         "window_days": days,
         "sessions_scanned": sessions,
